@@ -2,6 +2,7 @@ package sprinkler
 
 import (
 	"math"
+	"sync"
 
 	"github.com/zealllot/sprinklers/model"
 )
@@ -39,34 +40,47 @@ func (s *PolygonStrategy) PlaceSprinklers() []model.Point {
 
 	// 在[0, 2R)范围内每隔R/4尝试一次
 	offsetStep := step / 8
+
+	type result struct {
+		coverage   float64
+		count      int
+		sprinklers []model.Point
+	}
+	results := make(chan result, int(step/offsetStep+1)*int(step/offsetStep+1))
+	var wg sync.WaitGroup
+
 	for offsetX := 0.0; offsetX < step; offsetX += offsetStep {
 		for offsetY := 0.0; offsetY < step; offsetY += offsetStep {
-			// 计算这个偏移下的网格起点和终点
-			startX := math.Floor((minX-offsetX)/step)*step + offsetX + coverage
-			startY := math.Floor((minY-offsetY)/step)*step + offsetY + coverage
-			endX := math.Ceil((maxX-offsetX)/step)*step + offsetX
-			endY := math.Ceil((maxY-offsetY)/step)*step + offsetY
+			wg.Add(1)
+			go func(offsetX, offsetY float64) {
+				defer wg.Done()
+				startX := math.Floor((minX-offsetX)/step)*step + offsetX + coverage
+				startY := math.Floor((minY-offsetY)/step)*step + offsetY + coverage
+				endX := math.Ceil((maxX-offsetX)/step)*step + offsetX
+				endY := math.Ceil((maxY-offsetY)/step)*step + offsetY
 
-			// 生成当前偏移下的喷头方案
-			var currentSprinklers []model.Point
-			for x := startX; x <= endX; x += step {
-				for y := startY; y <= endY; y += step {
-					if s.isPointInPolygon(x, y) && s.checkWallDistance(x, y) {
-						currentSprinklers = append(currentSprinklers, model.Point{X: x, Y: y})
+				var currentSprinklers []model.Point
+				for x := startX; x <= endX; x += step {
+					for y := startY; y <= endY; y += step {
+						if s.isPointInPolygon(x, y) && s.checkWallDistance(x, y) {
+							currentSprinklers = append(currentSprinklers, model.Point{X: x, Y: y})
+						}
 					}
 				}
-			}
+				currentCoverage := s.evaluateCoverage(currentSprinklers)
+				results <- result{currentCoverage, len(currentSprinklers), currentSprinklers}
+			}(offsetX, offsetY)
+		}
+	}
+	wg.Wait()
+	close(results)
 
-			// 评估当前方案的覆盖效果
-			currentCoverage := s.evaluateCoverage(currentSprinklers)
-
-			// 选择覆盖率最高且喷头数量最少的方案
-			if currentCoverage > maxCoverage ||
-				(math.Abs(currentCoverage-maxCoverage) < 1e-6 && len(currentSprinklers) < minSprinklers) {
-				maxCoverage = currentCoverage
-				minSprinklers = len(currentSprinklers)
-				bestSprinklers = currentSprinklers
-			}
+	for r := range results {
+		if r.coverage > maxCoverage ||
+			(math.Abs(r.coverage-maxCoverage) < 1e-6 && r.count < minSprinklers) {
+			maxCoverage = r.coverage
+			minSprinklers = r.count
+			bestSprinklers = r.sprinklers
 		}
 	}
 
