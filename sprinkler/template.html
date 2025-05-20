@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>消防喷头布局可视化</title>
+    <style>
+        #canvas {
+            border: 1px solid #000;
+        }
+        .input-group {
+            margin: 10px 0;
+        }
+        .input-group label {
+            display: inline-block;
+            width: 200px;
+        }
+        .point-input {
+            margin: 5px 0;
+            padding: 5px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+        }
+        .point-input input {
+            width: 100px;
+            margin-right: 10px;
+        }
+        .point-input button {
+            margin-left: 10px;
+        }
+        #points-container {
+            margin: 10px 0;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div>
+        <div class="input-group">
+            <label>房间端点坐标：</label>
+            <button onclick="addPoint()">添加端点</button>
+        </div>
+        <div id="points-container">
+            <!-- 端点输入框将在这里动态添加 -->
+        </div>
+        <div class="input-group">
+            <label>批量输入端点：</label>
+            <textarea id="bulkPoints" rows="6" cols="40" placeholder="{X: 0, Y: 0}, ..."></textarea>
+            <button onclick="parseBulkPoints()">解析</button>
+        </div>
+        <div class="input-group">
+            <label>喷头覆盖半径（毫米）：</label>
+            <input type="number" id="coverageRadius" value="1700">
+        </div>
+        <div class="input-group">
+            <label>喷头与墙体最小距离（毫米）：</label>
+            <input type="number" id="minWallDistance" value="100">
+        </div>
+        <button onclick="calculate()">计算</button>
+    </div>
+    <canvas id="canvas" width="1000" height="1000"></canvas>
+    <div class="input-group">
+        <label>喷头坐标结果：</label>
+        <textarea id="resultPoints" rows="6" cols="40" readonly></textarea>
+    </div>
+    <script>
+        let pointCount = 0;
+
+        function addPoint() {
+            const container = document.getElementById('points-container');
+            const pointDiv = document.createElement('div');
+            pointDiv.className = 'point-input';
+            pointDiv.id = `point-${pointCount}`;
+            
+            pointDiv.innerHTML = `
+                <input type="number" placeholder="X坐标" class="point-x" value="0">
+                <input type="number" placeholder="Y坐标" class="point-y" value="0">
+                <button onclick="deletePoint(${pointCount})">删除</button>
+            `;
+            
+            container.appendChild(pointDiv);
+            pointCount++;
+        }
+
+        function deletePoint(index) {
+            const pointDiv = document.getElementById(`point-${index}`);
+            if (pointDiv) {
+                pointDiv.remove();
+            }
+        }
+
+        function getPoints() {
+            const points = [];
+            const containers = document.getElementsByClassName('point-input');
+            
+            for (let container of containers) {
+                const x = parseFloat(container.querySelector('.point-x').value);
+                const y = parseFloat(container.querySelector('.point-y').value);
+                if (!isNaN(x) && !isNaN(y)) {
+                    points.push({x, y});
+                }
+            }
+            
+            return points;
+        }
+
+        function calculate() {
+            const points = getPoints();
+            if (points.length < 3) {
+                alert('至少需要3个端点才能形成一个房间！');
+                return;
+            }
+
+            const coverageRadius = Number(document.getElementById('coverageRadius').value);
+            const minWallDistance = Number(document.getElementById('minWallDistance').value);
+            
+            console.log('发送请求:', {
+                points,
+                coverageRadius,
+                minWallDistance
+            });
+
+            // 发送到后端进行计算
+            fetch('/calculate', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    points,
+                    coverageRadius,
+                    minWallDistance
+                })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.text().then(text => {
+                        throw new Error(text);
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log('收到响应:', JSON.stringify(data, null, 2));
+                if (!data.room || !data.room.Walls || !data.room.Walls.length) {
+                    throw new Error('返回的房间数据格式不正确');
+                }
+                if (!data.sprinklers) {
+                    throw new Error('返回的喷头数据格式不正确');
+                }
+                drawSolution(data.room, data.sprinklers, data.coverageRadius);
+            })
+            .catch(error => {
+                console.error('错误:', error);
+                alert('计算失败: ' + error.message);
+            });
+        }
+
+        function drawSolution(room, sprinklers, coverageRadius) {
+            console.log('绘制解决方案:', {
+                room: JSON.stringify(room, null, 2),
+                sprinklers: JSON.stringify(sprinklers, null, 2),
+                coverageRadius
+            });
+            
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 绘制坐标轴
+            ctx.strokeStyle = 'green';
+            ctx.lineWidth = 1;
+            // X轴
+            ctx.beginPath();
+            ctx.moveTo(0, canvas.height);
+            ctx.lineTo(canvas.width, canvas.height);
+            ctx.stroke();
+            // Y轴
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(0, canvas.height);
+            ctx.stroke();
+            // 刻度
+            ctx.font = '10px Arial';
+            ctx.fillStyle = 'green';
+            for (let x = 0; x <= canvas.width; x += 100) {
+                ctx.beginPath();
+                ctx.moveTo(x, canvas.height);
+                ctx.lineTo(x, canvas.height - 5);
+                ctx.stroke();
+                ctx.fillText(x * 10, x + 2, canvas.height - 5);
+            }
+            for (let y = 0; y <= canvas.height; y += 100) {
+                ctx.beginPath();
+                ctx.moveTo(0, canvas.height - y);
+                ctx.lineTo(5, canvas.height - y);
+                ctx.stroke();
+                ctx.fillText(y * 10, 8, canvas.height - y - 2);
+            }
+
+            // 绘制房间
+            ctx.beginPath();
+            ctx.moveTo(room.Walls[0].X/10, canvas.height - room.Walls[0].Y/10);
+            for (let i = 1; i < room.Walls.length; i++) {
+                ctx.lineTo(room.Walls[i].X/10, canvas.height - room.Walls[i].Y/10);
+            }
+            ctx.closePath();
+            ctx.strokeStyle = '#000';
+            ctx.stroke();
+
+            // 绘制喷头覆盖范围（正方形）
+            sprinklers.forEach(sprinkler => {
+                const size = coverageRadius * 2 / 10; // 正方形边长
+                const x = sprinkler.X/10 - size/2;
+                const y = canvas.height - sprinkler.Y/10 - size/2;
+                ctx.beginPath();
+                ctx.rect(x, y, size, size);
+                ctx.fillStyle = 'rgba(0, 0, 255, 0.1)';
+                ctx.fill();
+                ctx.strokeStyle = 'blue';
+                ctx.stroke();
+            });
+
+            // 绘制喷头位置
+            sprinklers.forEach(sprinkler => {
+                ctx.beginPath();
+                ctx.arc(sprinkler.X/10, canvas.height - sprinkler.Y/10, 5, 0, Math.PI * 2);
+                ctx.fillStyle = 'red';
+                ctx.fill();
+                // 在点位旁边输出坐标
+                ctx.font = '12px Arial';
+                ctx.fillStyle = 'black';
+                ctx.fillText(`(${sprinkler.X}, ${sprinkler.Y})`, sprinkler.X/10 + 8, canvas.height - sprinkler.Y/10 - 8);
+            });
+
+            // 绘制房间端点坐标
+            room.Walls.forEach(point => {
+                ctx.font = '12px Arial';
+                ctx.fillStyle = 'blue';
+                ctx.fillText(`(${point.X}, ${point.Y})`, point.X/10 + 8, canvas.height - point.Y/10 - 8);
+            });
+
+            let resultText = sprinklers.map(sp => `{X: ${sp.X}, Y: ${sp.Y}}`).join(',\n');
+            document.getElementById('resultPoints').value = resultText;
+        }
+
+        function parseBulkPoints() {
+            const text = document.getElementById('bulkPoints').value;
+            // 匹配 {X: num, Y: num} 形式
+            const regex = /\{[^\}]*X:\s*([\-\d.]+)[^\}]*Y:\s*([\-\d.]+)[^\}]*\}/g;
+            let match;
+            let points = [];
+            while ((match = regex.exec(text)) !== null) {
+                const x = parseFloat(match[1]);
+                const y = parseFloat(match[2]);
+                if (!isNaN(x) && !isNaN(y)) {
+                    points.push({x, y});
+                }
+            }
+            // 清空现有端点输入
+            document.getElementById('points-container').innerHTML = '';
+            pointCount = 0;
+            // 添加解析出来的端点
+            for (const p of points) {
+                const container = document.getElementById('points-container');
+                const pointDiv = document.createElement('div');
+                pointDiv.className = 'point-input';
+                pointDiv.id = `point-${pointCount}`;
+                pointDiv.innerHTML = `
+                    <input type="number" placeholder="X坐标" class="point-x" value="${p.x}">
+                    <input type="number" placeholder="Y坐标" class="point-y" value="${p.y}">
+                    <button onclick="deletePoint(${pointCount})">删除</button>
+                `;
+                container.appendChild(pointDiv);
+                pointCount++;
+            }
+        }
+
+        // 初始化时添加默认端点
+        window.onload = function() {
+            // 添加用户指定的8个端点
+            const defaultPoints = [
+                {x: 0, y: 0},
+                {x: 0, y: 9000},
+                {x: 3000, y: 9000},
+                {x: 3000, y: 8000},
+                {x: 2000, y: 8000},
+                {x: 2000, y: 6000},
+                {x: 9000, y: 6000},
+                {x: 9000, y: 0}
+            ];
+            defaultPoints.forEach(point => {
+                const container = document.getElementById('points-container');
+                const pointDiv = document.createElement('div');
+                pointDiv.className = 'point-input';
+                pointDiv.id = `point-${pointCount}`;
+                pointDiv.innerHTML = `
+                    <input type="number" placeholder="X坐标" class="point-x" value="${point.x}">
+                    <input type="number" placeholder="Y坐标" class="point-y" value="${point.y}">
+                    <button onclick="deletePoint(${pointCount})">删除</button>
+                `;
+                container.appendChild(pointDiv);
+                pointCount++;
+            });
+        };
+    </script>
+</body>
+</html> 
