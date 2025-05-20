@@ -34,6 +34,13 @@
     </style>
 </head>
 <body>
+    <div style="display:flex;align-items:flex-start;">
+        <canvas id="canvas" width="800" height="800" style="display:none;"></canvas>
+        <div class="input-group" id="resultPointsContainer" style="margin-left: 20px; display:none;">
+            <label>喷头坐标结果：</label>
+            <textarea id="resultPoints" rows="24" cols="24" readonly></textarea>
+        </div>
+    </div>
     <div>
         <div class="input-group">
             <label>房间端点坐标：</label>
@@ -56,11 +63,6 @@
             <input type="number" id="minWallDistance" value="100">
         </div>
         <button onclick="calculate()">计算</button>
-    </div>
-    <canvas id="canvas" width="1000" height="1000"></canvas>
-    <div class="input-group">
-        <label>喷头坐标结果：</label>
-        <textarea id="resultPoints" rows="6" cols="40" readonly></textarea>
     </div>
     <script>
         let pointCount = 0;
@@ -156,13 +158,10 @@
         }
 
         function drawSolution(room, sprinklers, coverageRadius) {
-            console.log('绘制解决方案:', {
-                room: JSON.stringify(room, null, 2),
-                sprinklers: JSON.stringify(sprinklers, null, 2),
-                coverageRadius
-            });
-            
             const canvas = document.getElementById('canvas');
+            canvas.style.display = "block";
+            document.getElementById('resultPointsContainer').style.display = "block";
+            const scale = 0.6;
             const ctx = canvas.getContext('2d');
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -180,28 +179,28 @@
             ctx.lineTo(0, canvas.height);
             ctx.stroke();
             // 刻度
-            ctx.font = '10px Arial';
+            ctx.font = `${18 * scale}px Arial`;
             ctx.fillStyle = 'green';
-            for (let x = 0; x <= canvas.width; x += 100) {
+            for (let x = 0; x <= canvas.width; x += 60) {
                 ctx.beginPath();
                 ctx.moveTo(x, canvas.height);
-                ctx.lineTo(x, canvas.height - 5);
+                ctx.lineTo(x, canvas.height - 5 * scale);
                 ctx.stroke();
-                ctx.fillText(x * 10, x + 2, canvas.height - 5);
+                ctx.fillText(Math.round(x / scale * 10), x + 2, canvas.height - 5 * scale);
             }
-            for (let y = 0; y <= canvas.height; y += 100) {
+            for (let y = 0; y <= canvas.height; y += 60) {
                 ctx.beginPath();
                 ctx.moveTo(0, canvas.height - y);
-                ctx.lineTo(5, canvas.height - y);
+                ctx.lineTo(5 * scale, canvas.height - y);
                 ctx.stroke();
-                ctx.fillText(y * 10, 8, canvas.height - y - 2);
+                ctx.fillText(Math.round(y / scale * 10), 8, canvas.height - y - 2);
             }
 
             // 绘制房间
             ctx.beginPath();
-            ctx.moveTo(room.Walls[0].X/10, canvas.height - room.Walls[0].Y/10);
+            ctx.moveTo(room.Walls[0].X * scale / 10, canvas.height - room.Walls[0].Y * scale / 10);
             for (let i = 1; i < room.Walls.length; i++) {
-                ctx.lineTo(room.Walls[i].X/10, canvas.height - room.Walls[i].Y/10);
+                ctx.lineTo(room.Walls[i].X * scale / 10, canvas.height - room.Walls[i].Y * scale / 10);
             }
             ctx.closePath();
             ctx.strokeStyle = '#000';
@@ -209,9 +208,9 @@
 
             // 绘制喷头覆盖范围（正方形）
             sprinklers.forEach(sprinkler => {
-                const size = coverageRadius * 2 / 10; // 正方形边长
-                const x = sprinkler.X/10 - size/2;
-                const y = canvas.height - sprinkler.Y/10 - size/2;
+                const size = coverageRadius * 2 * scale / 10; // 正方形边长
+                const x = sprinkler.X * scale / 10 - size/2;
+                const y = canvas.height - sprinkler.Y * scale / 10 - size/2;
                 ctx.beginPath();
                 ctx.rect(x, y, size, size);
                 ctx.fillStyle = 'rgba(0, 0, 255, 0.1)';
@@ -223,20 +222,20 @@
             // 绘制喷头位置
             sprinklers.forEach(sprinkler => {
                 ctx.beginPath();
-                ctx.arc(sprinkler.X/10, canvas.height - sprinkler.Y/10, 5, 0, Math.PI * 2);
+                ctx.arc(sprinkler.X * scale / 10, canvas.height - sprinkler.Y * scale / 10, 5 * scale, 0, Math.PI * 2);
                 ctx.fillStyle = 'red';
                 ctx.fill();
                 // 在点位旁边输出坐标
-                ctx.font = '12px Arial';
+                ctx.font = `${18 * scale}px Arial`;
                 ctx.fillStyle = 'black';
-                ctx.fillText(`(${sprinkler.X}, ${sprinkler.Y})`, sprinkler.X/10 + 8, canvas.height - sprinkler.Y/10 - 8);
+                ctx.fillText(`(${sprinkler.X}, ${sprinkler.Y})`, sprinkler.X * scale / 10 + 8 * scale, canvas.height - sprinkler.Y * scale / 10 - 8 * scale);
             });
 
             // 绘制房间端点坐标
             room.Walls.forEach(point => {
-                ctx.font = '12px Arial';
+                ctx.font = `${18 * scale}px Arial`;
                 ctx.fillStyle = 'blue';
-                ctx.fillText(`(${point.X}, ${point.Y})`, point.X/10 + 8, canvas.height - point.Y/10 - 8);
+                ctx.fillText(`(${point.X}, ${point.Y})`, point.X * scale / 10 + 8 * scale, canvas.height - point.Y * scale / 10 - 8 * scale);
             });
 
             let resultText = sprinklers.map(sp => `{X: ${sp.X}, Y: ${sp.Y}}`).join(',\n');
