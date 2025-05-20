@@ -31,11 +31,29 @@
             max-height: 200px;
             overflow-y: auto;
         }
+        .main-calc-btn {
+            font-size: 22px;
+            padding: 12px 40px;
+            background: #007bff;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-weight: bold;
+            box-shadow: 0 2px 8px #b3d7ff;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .main-calc-btn:hover {
+            background: #0056b3;
+        }
     </style>
 </head>
 <body>
+    <div id="loadingTip" style="display:none;position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:9999;font-size:22px;color:#d9534f;background:rgba(255,255,255,0.9);padding:16px 32px;border-radius:8px;box-shadow:0 2px 8px #aaa;">请稍候，正在计算...</div>
     <div style="display:flex;align-items:flex-start;">
-        <canvas id="canvas" width="800" height="800" style="display:none;"></canvas>
+        <div style="position:relative;display:inline-block;">
+            <canvas id="canvas" width="800" height="800" style="display:none;"></canvas>
+        </div>
         <div class="input-group" id="resultPointsContainer" style="margin-left: 20px; display:none;">
             <label>喷头坐标结果：</label>
             <textarea id="resultPoints" rows="24" cols="24" readonly></textarea>
@@ -62,7 +80,7 @@
             <label>喷头与墙体最小距离（毫米）：</label>
             <input type="number" id="minWallDistance" value="100">
         </div>
-        <button onclick="calculate()">计算</button>
+        <button class="main-calc-btn" onclick="calculate()">计算</button>
     </div>
     <script>
         let pointCount = 0;
@@ -111,7 +129,7 @@
                 alert('至少需要3个端点才能形成一个房间！');
                 return;
             }
-
+            document.getElementById('loadingTip').style.display = 'block';
             const coverageRadius = Number(document.getElementById('coverageRadius').value);
             const minWallDistance = Number(document.getElementById('minWallDistance').value);
             
@@ -142,6 +160,7 @@
                 return response.json();
             })
             .then(data => {
+                document.getElementById('loadingTip').style.display = 'none';
                 console.log('收到响应:', JSON.stringify(data, null, 2));
                 if (!data.room || !data.room.Walls || !data.room.Walls.length) {
                     throw new Error('返回的房间数据格式不正确');
@@ -152,6 +171,7 @@
                 drawSolution(data.room, data.sprinklers, data.coverageRadius);
             })
             .catch(error => {
+                document.getElementById('loadingTip').style.display = 'none';
                 console.error('错误:', error);
                 alert('计算失败: ' + error.message);
             });
